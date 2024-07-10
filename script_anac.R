@@ -19,6 +19,9 @@ cor_azul <- '#367fa9'
 cor_vermelho <- '#B95D56'
 cor_cinza <- '#9CADBC'
 intensidade_carbono_qav <- 3.08
+filtro_aeroporto <- 'GUARULHOS'
+filtro_estado <- 'SP'
+filtro_empresa <- 'GOL LINHAS AÉREAS S.A. (EX- VRG LINHAS AÉREAS S.A.)'
 
 # ARRUMAÇÃO DOS DADOS: ----------------------------------------------------
 dados_anac <- base %>%
@@ -53,83 +56,624 @@ total_ts <- dados_anac %>%
   dplyr::group_by(ano, mes) %>%
   dplyr::summarise(voo = sum(voo),
                    combustivel_litros = sum(combustivel_litros),
-                   passageiro = sum(passageiro)) %>%
+                   passageiro = sum(passageiro),
+                   carga = sum(carga)) %>%
   dplyr::mutate(data = as.Date(paste0(ano, "-", mes, "-01"))) %>%
   dplyr::ungroup() %>%
   dplyr::select(-ano, -mes) %>%
   dplyr::arrange(data) %>%
   dplyr::mutate(voo_acum = cumsum(voo),
-                combustivel_litros_acum = cumsum(combustivel_litros),
-                passageiro_acum = cumsum(passageiro)) %>%
+                combustivel_litros_acum = cumsum(combustivel_litros)) %>%
   dplyr::mutate(emissao_carbono = combustivel_litros * intensidade_carbono_qav,
-                emissao_carbono_acum = combustivel_litros_acum * intensidade_carbono_qav)
+                emissao_carbono_acum = combustivel_litros_acum/1000 * intensidade_carbono_qav)
+
+
+total_ts_simples <- total_ts %>%
+  dplyr::select(data, voo_acum, emissao_carbono_acum) %>%
+  dplyr::rename('voo_acum_total' = voo_acum,
+                'emissao_carbono_acum_total' = emissao_carbono_acum)
 
 
 aeroporto_ts <- dados_anac %>%
-  dplyr::group_by(ano, mes, aeroporto_de_origem_nome) %>%
-  dplyr::summarise(voo = sum(voo),
-                   combustivel_litros = sum(combustivel_litros),
-                   passageiro = sum(passageiro)) %>%
   dplyr::mutate(data = as.Date(paste0(ano, "-", mes, "-01"))) %>%
+  dplyr::group_by(data, aeroporto_de_origem_nome) %>%
+  dplyr::summarise(voo = sum(voo),
+                   combustivel_litros = sum(combustivel_litros)) %>%
   dplyr::ungroup() %>%
-  dplyr::select(-ano, -mes) %>%
+  dplyr::group_by(aeroporto_de_origem_nome) %>%
+  dplyr::mutate(combustivel_litros_acum = cumsum(combustivel_litros),
+                voo_acum = cumsum(voo)) %>%
+  dplyr::ungroup() %>%
   dplyr::arrange(data) %>%
-  dplyr::mutate(voo_acum = cumsum(voo),
-                combustivel_litros_acum = cumsum(combustivel_litros),
-                passageiro_acum = cumsum(passageiro)) %>%
-  dplyr::mutate(emissao_carbono = combustivel_litros * intensidade_carbono_qav,
-                emissao_carbono_acum = combustivel_litros_acum * intensidade_carbono_qav)
+  dplyr::mutate(emissao_carbono_acum = combustivel_litros_acum/1000 * intensidade_carbono_qav) %>%
+  dplyr::select(data, aeroporto_de_origem_nome, voo_acum, emissao_carbono_acum) %>%
+  dplyr::left_join(total_ts_simples, by = 'data') %>%
+  dplyr::mutate(prop_voo = round(voo_acum/voo_acum_total,4),
+                prop_emissao = round(emissao_carbono_acum/emissao_carbono_acum_total,4))
 
 
 estado_ts <- dados_anac %>%
-  dplyr::group_by(ano, mes, aeroporto_de_origem_uf) %>%
-  dplyr::summarise(voo = sum(voo),
-                   combustivel_litros = sum(combustivel_litros),
-                   passageiro = sum(passageiro)) %>%
   dplyr::mutate(data = as.Date(paste0(ano, "-", mes, "-01"))) %>%
-  dplyr::ungroup() %>%
-  dplyr::select(-ano, -mes) %>%
-  dplyr::arrange(data) %>%
-  dplyr::mutate(voo_acum = cumsum(voo),
-                combustivel_litros_acum = cumsum(combustivel_litros),
-                passageiro_acum = cumsum(passageiro)) %>%
-  dplyr::mutate(emissao_carbono = combustivel_litros * intensidade_carbono_qav,
-                emissao_carbono_acum = combustivel_litros_acum * intensidade_carbono_qav)
-
-
-regiao_ts <- dados_anac %>%
-  dplyr::group_by(ano, mes, aeroporto_de_origem_regiao) %>%
+  dplyr::group_by(data, aeroporto_de_origem_uf) %>%
   dplyr::summarise(voo = sum(voo),
-                   combustivel_litros = sum(combustivel_litros),
-                   passageiro = sum(passageiro)) %>%
-  dplyr::mutate(data = as.Date(paste0(ano, "-", mes, "-01"))) %>%
+                   combustivel_litros = sum(combustivel_litros)) %>%
   dplyr::ungroup() %>%
-  dplyr::select(-ano, -mes) %>%
+  dplyr::group_by(aeroporto_de_origem_uf) %>%
+  dplyr::mutate(combustivel_litros_acum = cumsum(combustivel_litros),
+                voo_acum = cumsum(voo)) %>%
+  dplyr::ungroup() %>%
   dplyr::arrange(data) %>%
-  dplyr::mutate(voo_acum = cumsum(voo),
-                combustivel_litros_acum = cumsum(combustivel_litros),
-                passageiro_acum = cumsum(passageiro)) %>%
-  dplyr::mutate(emissao_carbono = combustivel_litros * intensidade_carbono_qav,
-                emissao_carbono_acum = combustivel_litros_acum * intensidade_carbono_qav)
+  dplyr::mutate(emissao_carbono_acum = combustivel_litros_acum/1000 * intensidade_carbono_qav) %>%
+  dplyr::select(data, aeroporto_de_origem_uf, voo_acum, emissao_carbono_acum) %>%
+  dplyr::left_join(total_ts_simples, by = 'data') %>%
+  dplyr::mutate(prop_voo = round(voo_acum/voo_acum_total,4),
+                prop_emissao = round(emissao_carbono_acum/emissao_carbono_acum_total,4))
 
 
 empresa_ts <- dados_anac %>%
-  dplyr::group_by(ano, mes, empresa_nome) %>%
-  dplyr::summarise(voo = sum(voo),
-                   combustivel_litros = sum(combustivel_litros),
-                   passageiro = sum(passageiro)) %>%
   dplyr::mutate(data = as.Date(paste0(ano, "-", mes, "-01"))) %>%
+  dplyr::group_by(data, empresa_nome) %>%
+  dplyr::summarise(voo = sum(voo),
+                   combustivel_litros = sum(combustivel_litros)) %>%
   dplyr::ungroup() %>%
-  dplyr::select(-ano, -mes) %>%
+  dplyr::group_by(empresa_nome) %>%
+  dplyr::mutate(combustivel_litros_acum = cumsum(combustivel_litros),
+                voo_acum = cumsum(voo)) %>%
+  dplyr::ungroup() %>%
   dplyr::arrange(data) %>%
-  dplyr::mutate(voo_acum = cumsum(voo),
-                combustivel_litros_acum = cumsum(combustivel_litros),
-                passageiro_acum = cumsum(passageiro)) %>%
-  dplyr::mutate(emissao_carbono = combustivel_litros * intensidade_carbono_qav,
-                emissao_carbono_acum = combustivel_litros_acum * intensidade_carbono_qav)
+  dplyr::mutate(emissao_carbono_acum = combustivel_litros_acum/1000 * intensidade_carbono_qav) %>%
+  dplyr::select(data, empresa_nome, voo_acum, emissao_carbono_acum) %>%
+  dplyr::left_join(total_ts_simples, by = 'data') %>%
+  dplyr::mutate(prop_voo = round(voo_acum/voo_acum_total,4),
+                prop_emissao = round(emissao_carbono_acum/emissao_carbono_acum_total,4))
 
 
 # VISUALIZAÇÃO DOS DADOS: -------------------------------------------------
+# TOTAL: ------------------------------------------------------------------
+#----
+voo_total_graf <- total_ts %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                big.mark = '.',
+                                decimal.mark = ',',
+                                accuracy = 1))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                 y = voo_acum,
+                 group = 1,
+                 text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                               '<br>Total de Voos: ',
+                               scales::number(voo_acum,
+                                              big.mark = '.',
+                                              decimal.mark = ',',
+                                              accuracy = 1))),
+             color = cor_azul,
+             size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = 'Total de Voos Realizados no Brasil (Empresas Brasileiras)',
+       x = '',
+       y = 'Total de Voos (Acumulado)') +
+  theme_minimal()
+
+
+plotly::ggplotly(voo_total_graf, tooltip = 'text')
+
+
+#----
+emissao_total_graf <- total_ts %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                big.mark = '.',
+                                decimal.mark = ',',
+                                accuracy = 1), ' Toneladas')),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = 'Total de Emissões de CO2 no Brasil (Empresas Brasileiras)',
+       x = '',
+       y = 'Toneladas de CO2 (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_total_graf, tooltip = 'text')
+
+
+#----
+passageiro_total_graf <- total_ts %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = passageiro,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Passageiros: ',
+                              scales::number(passageiro,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = passageiro,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Passageiros: ',
+                              scales::number(passageiro,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = 'Total de Passageiros Transportados no Brasil (Empresas Brasileiras)',
+       x = '',
+       y = 'Pessoas (Passageiros Pagos e Grátis)') +
+  theme_minimal()
+
+plotly::ggplotly(passageiro_total_graf, tooltip = 'text')
+
+
+#----
+carga_total_graf <- total_ts %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = carga/1000,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Carga Paga: ',
+                              scales::number(carga/1000,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Tonelada')),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = carga/1000,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Carga Paga: ',
+                              scales::number(carga/1000,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Tonelada')),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = 'Total de Carga Transportada no Brasil (Empresas Brasileiras)',
+       x = '',
+       y = 'Tonelada (Carga Paga e Grátis)') +
+  theme_minimal()
+
+plotly::ggplotly(carga_total_graf, tooltip = 'text')
+
+
+
+# ESTADOS: ----------------------------------------------------------------
+#----
+voo_estado_graf <- estado_ts %>%
+  dplyr::filter(aeroporto_de_origem_uf == filtro_estado) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                 y = voo_acum,
+                 group = 1,
+                 text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                               '<br>Total de Voos: ',
+                               scales::number(voo_acum,
+                                              big.mark = '.',
+                                              decimal.mark = ',',
+                                              accuracy = 1))),
+             color = cor_azul,
+             size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Voos Realizados no Estado de ', filtro_estado),
+       x = '',
+       y = 'Total de Voos (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(voo_estado_graf, tooltip = 'text')
+
+
+#----
+voo_estado_prop_graf <- estado_ts %>%
+  dplyr::filter(aeroporto_de_origem_uf == filtro_estado) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Voos Realizados no Estado de ', filtro_estado),
+       x = '',
+       y = 'Proporção de Voos') +
+  theme_minimal()
+
+plotly::ggplotly(voo_estado_prop_graf, tooltip = 'text')
+
+
+#----
+emissao_estado_graf <- estado_ts %>%
+  dplyr::filter(aeroporto_de_origem_uf == filtro_estado) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Emissões de CO2 no Estado de ', filtro_estado),
+       x = '',
+       y = 'Toneladas de CO2 (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_estado_graf, tooltip = 'text')
+
+
+#----
+emissao_estado_prop_graf <- estado_ts %>%
+  dplyr::filter(aeroporto_de_origem_uf == filtro_estado) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_emissao,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Emissão de CO2: ',
+                              scales::percent(prop_emissao))),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                y = prop_emissao,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Emissão de CO2: ',
+                              scales::percent(prop_emissao))),
+            color = cor_vermelho,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Emissões de CO2 no Estado de ', filtro_estado),
+       x = '',
+       y = 'Proporção de Emissão de CO2') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_estado_prop_graf, tooltip = 'text')
+
+
+# AEROPORTOS: -------------------------------------------------------------
+#----
+voo_aeroporto_graf <- aeroporto_ts %>%
+  dplyr::filter(aeroporto_de_origem_nome == filtro_aeroporto) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Voos Realizados no Aeroporto de ', filtro_aeroporto),
+       x = '',
+       y = 'Total de Voos (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(voo_aeroporto_graf, tooltip = 'text')
+
+
+#----
+voo_aeroporto_prop_graf <- aeroporto_ts %>%
+  dplyr::filter(aeroporto_de_origem_nome == filtro_aeroporto) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Voos Realizados no Aeroporto de ', filtro_aeroporto),
+       x = '',
+       y = 'Proporção de Voos') +
+  theme_minimal()
+
+plotly::ggplotly(voo_aeroporto_prop_graf, tooltip = 'text')
+
+
+#----
+emissao_aeroporto_graf <- aeroporto_ts %>%
+  dplyr::filter(aeroporto_de_origem_nome == filtro_aeroporto) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                 y = emissao_carbono_acum,
+                 group = 1,
+                 text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                               '<br>Emissão de CO2: ',
+                               scales::number(emissao_carbono_acum,
+                                              big.mark = '.',
+                                              decimal.mark = ',',
+                                              accuracy = 1), ' Toneladas')),
+             color = cor_vermelho,
+             size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Emissões de CO2 no Aeroporto de ', filtro_aeroporto),
+       x = '',
+       y = 'Toneladas de CO2 (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_aeroporto_graf, tooltip = 'text')
+
+
+#----
+emissao_aeroporto_prop_graf <- aeroporto_ts %>%
+  dplyr::filter(aeroporto_de_origem_nome == filtro_aeroporto) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_emissao,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Emissão de CO2: ',
+                              scales::percent(prop_emissao))),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                 y = prop_emissao,
+                 group = 1,
+                 text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                               '<br>Proporção de Emissão de CO2: ',
+                               scales::percent(prop_emissao))),
+             color = cor_vermelho,
+             size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Emissões de CO2 no Aeroporto de ', filtro_aeroporto),
+       x = '',
+       y = 'Proporção de Emissão de CO2') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_aeroporto_prop_graf, tooltip = 'text')
+
+
+# COMPANHIAS: -------------------------------------------------------------
+#----
+voo_empresa_graf <- empresa_ts %>%
+  dplyr::filter(empresa_nome == filtro_empresa) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = voo_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Total de Voos: ',
+                              scales::number(voo_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Voos Realizados pela Companhia<br>', filtro_empresa),
+       x = '',
+       y = 'Total de Voos (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(voo_empresa_graf, tooltip = 'text')
+
+
+#----
+voo_empresa_prop_graf <- empresa_ts %>%
+  dplyr::filter(empresa_nome == filtro_empresa) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul) +
+  geom_point(aes(x = data,
+                y = prop_voo,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Voos: ',
+                              scales::percent(prop_voo))),
+            color = cor_azul,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Voos Realizados pela Companhia<br>', filtro_empresa),
+       x = '',
+       y = 'Proporção de Voos') +
+  theme_minimal()
+
+plotly::ggplotly(voo_empresa_prop_graf, tooltip = 'text')
+
+
+#----
+emissao_empresa_graf <- empresa_ts %>%
+  dplyr::filter(empresa_nome == filtro_empresa) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                y = emissao_carbono_acum,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Emissão de CO2: ',
+                              scales::number(emissao_carbono_acum,
+                                             big.mark = '.',
+                                             decimal.mark = ',',
+                                             accuracy = 1), ' Toneladas')),
+            color = cor_vermelho,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::number_format(big.mark = '.',
+                                                    decimal.mark = ',',
+                                                    accuracy = 1)) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Total de Emissões de CO2 pela Companhia<br>', filtro_empresa),
+       x = '',
+       y = 'Toneladas de CO2 (Acumulado)') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_empresa_graf, tooltip = 'text')
+
+
+#----
+emissao_empresa_prop_graf <- empresa_ts %>%
+  dplyr::filter(empresa_nome == filtro_empresa) %>%
+  ggplot() +
+  geom_line(aes(x = data,
+                y = prop_emissao,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Emissão de CO2: ',
+                              scales::percent(prop_emissao))),
+            color = cor_vermelho) +
+  geom_point(aes(x = data,
+                y = prop_emissao,
+                group = 1,
+                text = paste0('Data: ', scales::date_format(format = '%m/%Y')(data),
+                              '<br>Proporção de Emissão de CO2: ',
+                              scales::percent(prop_emissao))),
+            color = cor_vermelho,
+            size = 0.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  scale_x_date(date_labels = '%Y', date_breaks = '2 years') +
+  labs(title = paste0('Proporção de Emissões de CO2 pela Companhia<br>', filtro_empresa),
+       x = '',
+       y = 'Proporção de Emissão de CO2') +
+  theme_minimal()
+
+plotly::ggplotly(emissao_empresa_prop_graf, tooltip = 'text')
+
 
 
 
