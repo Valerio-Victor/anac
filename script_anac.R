@@ -675,5 +675,13 @@ emissao_empresa_prop_graf <- empresa_ts %>%
 plotly::ggplotly(emissao_empresa_prop_graf, tooltip = 'text')
 
 
+# EXPORTAÇÃO DOS DADOS: ---------------------------------------------------
+tabela_anac <- list(total_ts = total_ts,
+                    aeroporto_ts = aeroporto_ts,
+                    estado_ts = estado_ts,
+                    empresa_ts = empresa_ts)
+
+
+saveRDS(tabela_anac, 'tabela_anac.rds')
 
 
