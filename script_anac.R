@@ -127,6 +127,19 @@ empresa_ts <- dados_anac %>%
   dplyr::mutate(prop_voo = round(voo_acum/voo_acum_total,4),
                 prop_emissao = round(emissao_carbono_acum/emissao_carbono_acum_total,4))
 
+calc_aeroportos <- base %>%
+  dplyr::filter(NATUREZA == 'DOMÉSTICA' & ANO == dplyr::last(ANO)) %>%
+  dplyr::select(MES, AEROPORTO_DE_ORIGEM_NOME, COMBUSTIVEL_LITROS) %>%
+  tidyr::drop_na() %>%
+  dplyr::group_by(MES, AEROPORTO_DE_ORIGEM_NOME) %>%
+  dplyr::summarise(consumo = sum(COMBUSTIVEL_LITROS)) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by(AEROPORTO_DE_ORIGEM_NOME) %>%
+  dplyr::summarise(consumo = mean(consumo)) %>%
+  dplyr::ungroup() %>%
+  dplyr::rename('consumo' = consumo,
+                'aeroporto' = AEROPORTO_DE_ORIGEM_NOME)
+
 
 # VISUALIZAÇÃO DOS DADOS: -------------------------------------------------
 # TOTAL: ------------------------------------------------------------------
@@ -684,4 +697,5 @@ tabela_anac <- list(total_ts = total_ts,
 
 saveRDS(tabela_anac, 'tabela_anac.rds')
 
+saveRDS(calc_aeroportos, 'calc_aeroportos.rds')
 
