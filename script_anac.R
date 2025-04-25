@@ -145,7 +145,7 @@ media_consumo_companhias <- base %>%
   tidyr::drop_na() %>%
   dplyr::transmute(
     mes = MES,
-    companhia = paste0(EMPRESA_NOME, ' (', EMPRESA_SIGLA,')'),
+    companhia = EMPRESA_NOME,
     consumo = COMBUSTIVEL_LITROS
   ) %>%
   dplyr::group_by(mes, companhia) %>%
@@ -865,15 +865,15 @@ p <- ggplot() +
                            "<br>Destino:", municipio_destino)),
           alpha = 0.7) +
 
-  # Aeroportos de origem
-  geom_sf(data = aeroportos_origem,
-          shape = 21, fill = "blue", color = "black", size = 2,
-          alpha = 0.6) +
-
-  # Aeroportos de destino
-  geom_sf(data = aeroportos_destino,
-          shape = 21, fill = "red", color = "black", size = 2,
-          alpha = 0.6) +
+  # # Aeroportos de origem
+  # geom_sf(data = aeroportos_origem,
+  #         shape = 21, fill = "blue", color = "black", size = 2,
+  #         alpha = 0.6) +
+  #
+  # # Aeroportos de destino
+  # geom_sf(data = aeroportos_destino,
+  #         shape = 21, fill = "red", color = "black", size = 2,
+  #         alpha = 0.6) +
 
   # Escalas e tema
   scale_color_gradient(low = "blue", high = "red", name = "Consumo (L)") +
