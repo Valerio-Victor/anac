@@ -1,6 +1,9 @@
-'# PACOTES: ----------------------------------------------------------------
+# PACOTES: ----------------------------------------------------------------
 library(magrittr)
 library(ggplot2)
+library(flightsbr)
+library(geobr)
+library(sf)
 
 
 # IMPORTAÇÃO DOS DADOS: ---------------------------------------------------
@@ -13,6 +16,9 @@ base <- readr::read_delim(url,
                           trim_ws = TRUE,
                           skip = 1)
 
+
+dados_aeroportos <- read_airports(type = 'all') %>%
+  dplyr::select(codigo_oaci, municipio, latitude, longitude)
 
 # PARÂMETROS: -------------------------------------------------------------
 cor_azul <- '#367fa9'
@@ -127,18 +133,70 @@ empresa_ts <- dados_anac %>%
   dplyr::mutate(prop_voo = round(voo_acum/voo_acum_total,4),
                 prop_emissao = round(emissao_carbono_acum/emissao_carbono_acum_total,4))
 
-calc_aeroportos <- base %>%
-  dplyr::filter(NATUREZA == 'DOMÉSTICA' & ANO == dplyr::last(ANO)) %>%
-  dplyr::select(MES, AEROPORTO_DE_ORIGEM_NOME, COMBUSTIVEL_LITROS) %>%
+
+media_consumo_companhias <- base %>%
+  dplyr::filter(
+    NATUREZA == 'DOMÉSTICA' & ANO == dplyr::last(x = ANO)) %>%
+  dplyr::select(
+    MES,
+    EMPRESA_NOME,
+    EMPRESA_SIGLA,
+    COMBUSTIVEL_LITROS) %>%
   tidyr::drop_na() %>%
-  dplyr::group_by(MES, AEROPORTO_DE_ORIGEM_NOME) %>%
-  dplyr::summarise(consumo = sum(COMBUSTIVEL_LITROS)) %>%
+  dplyr::transmute(
+    mes = MES,
+    companhia = paste0(EMPRESA_NOME, ' (', EMPRESA_SIGLA,')'),
+    consumo = COMBUSTIVEL_LITROS
+  ) %>%
+  dplyr::group_by(mes, companhia) %>%
+  dplyr::summarise(consumo = sum(consumo)) %>%
   dplyr::ungroup() %>%
-  dplyr::group_by(AEROPORTO_DE_ORIGEM_NOME) %>%
-  dplyr::summarise(consumo = mean(consumo)) %>%
+  dplyr::group_by(companhia) %>%
+  dplyr::summarise(media_consumo = round(mean(consumo))) %>%
+  dplyr::ungroup()
+
+
+mapa_rota <- base %>%
+  janitor::clean_names() %>%
+  dplyr::filter(natureza == 'DOMÉSTICA' & ano >= 2023) %>%
+  dplyr::transmute(
+    data = paste0(mes, '-', ano),
+    companhia = empresa_nome,
+    rota = paste0(
+      aeroporto_de_origem_sigla,
+      ' - ',
+      aeroporto_de_destino_sigla),
+    consumo = combustivel_litros,
+    voo = 1) %>%
+  tidyr::drop_na() %>%
+  dplyr::group_by(data, companhia, rota) %>%
+  dplyr::summarise(
+    voo = sum(voo),
+    consumo = sum(consumo)
+  ) %>%
   dplyr::ungroup() %>%
-  dplyr::rename('consumo' = consumo,
-                'aeroporto' = AEROPORTO_DE_ORIGEM_NOME)
+
+  dplyr::group_by(companhia, rota) %>%
+  dplyr::summarise(
+    media_voo = round(mean(voo)),
+    media_consumo = round(mean(consumo))
+  ) %>%
+  dplyr::ungroup() %>%
+  tidyr::separate(
+    rota,
+    remove = FALSE,
+    into = c('origem', 'destino'),
+    sep = ' - ') %>%
+  dplyr::left_join(dados_aeroportos,
+                   by = c('origem' = 'codigo_oaci')) %>%
+  dplyr::rename('municipio_origem' = municipio,
+                'latitude_origem' = latitude,
+                'longitude_origem' = longitude) %>%
+  dplyr::left_join(dados_aeroportos,
+                   by = c('destino' = 'codigo_oaci')) %>%
+  dplyr::rename('municipio_destino' = municipio,
+                'latitude_destino' = latitude,
+                'longitude_destino' = longitude)
 
 
 # VISUALIZAÇÃO DOS DADOS: -------------------------------------------------
@@ -694,8 +752,139 @@ tabela_anac <- list(total_ts = total_ts,
                     estado_ts = estado_ts,
                     empresa_ts = empresa_ts)
 
-
 saveRDS(tabela_anac, 'tabela_anac.rds')
 
-saveRDS(calc_aeroportos, 'calc_aeroportos.rds')
+saveRDS(media_consumo_companhias, 'media_consumo_companhias.rds')
 
+saveRDS(mapa_rota, 'mapa_rota.rds')
+
+
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# TESTE DE GRÁFICO: -------------------------------------------------------
+
+
+dados <- mapa_rota
+
+# Filtrar por uma companhia específica
+companhia_selecionada <- "GOL LINHAS AÉREAS S.A. (EX- VRG LINHAS AÉREAS S.A.)"
+dados_filtrados <- dados %>%
+  dplyr::filter(companhia == companhia_selecionada) %>%
+tidyr::drop_na()
+
+# Criar geometria de linhas entre os pontos de origem e destino
+rotas_sf <- dados_filtrados %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    geometry = list(
+      sf::st_linestring(
+        matrix(c(longitude_origem, latitude_origem,
+                 longitude_destino, latitude_destino),
+               ncol = 2, byrow = TRUE)
+      )
+    )
+  ) %>%
+  sf::st_as_sf(crs = 4326)
+
+# Carregar os dados geográficos dos estados do Brasil
+estados <- geobr::read_state(year = 2020)
+
+# Aeroportos de origem
+aeroportos_origem <- dados_filtrados %>%
+  dplyr::select(municipio_origem, latitude_origem, longitude_origem) %>%
+  dplyr::distinct() %>%
+  sf::st_as_sf(coords = c("longitude_origem", "latitude_origem"), crs = 4326)
+
+# Aeroportos de destino
+aeroportos_destino <- dados_filtrados %>%
+  dplyr::select(municipio_destino, latitude_destino, longitude_destino) %>%
+  dplyr::distinct() %>%
+  sf::st_as_sf(coords = c("longitude_destino", "latitude_destino"), crs = 4326)
+
+
+
+# Mapa com rotas e aeroportos
+p <- ggplot() +
+  geom_sf(data = estados, fill = "white", color = "black", size = 0.2) +
+
+  # Rotas
+  geom_sf(data = rotas_sf,
+          aes(size = media_voo,
+              color = media_consumo,
+              text = paste("Rota:", rota,
+                           "<br>Voos/mês:", media_voo,
+                           "<br>Consumo:", media_consumo,
+                           "<br>Origem:", municipio_origem,
+                           "<br>Destino:", municipio_destino)),
+          alpha = 0.7) +
+
+  # Aeroportos de origem
+  geom_sf(data = aeroportos_origem,
+          shape = 21, fill = "blue", color = "black", size = 2,
+          alpha = 0.6) +
+
+  # Aeroportos de destino
+  geom_sf(data = aeroportos_destino,
+          shape = 21, fill = "red", color = "black", size = 2,
+          alpha = 0.6) +
+
+  # Escalas e tema
+  scale_color_gradient(low = "blue", high = "red", name = "Consumo (L)") +
+  scale_size_continuous(range = c(0.3, 2.5), name = "Média de voos") +
+  theme_minimal() +
+  labs(
+    title = paste("Rotas Aéreas -", companhia_selecionada),
+    subtitle = "Espessura = média de voos | Cor = consumo de combustível",
+    x = NULL, y = NULL
+  )
+
+p
+# Tornar interativo com ggplotly
+plotly::ggplotly(p, tooltip = "text")
